@@ -6,7 +6,7 @@
  * 추가적인 내용이 필요하거나 전체적인 로직이 다르다면 말씀해주세요!
  * */
 
-package ChatServer;
+package Common;
 
 import java.io.*;
 import java.net.*;

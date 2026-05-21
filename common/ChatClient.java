@@ -1,14 +1,21 @@
+/* 닉네임 null/빈 값 체크 → 잘못된 닉네임이면 종료
+ * 수신 스레드 안정화 → setDaemon(true)로 프로그램 종료 시 자동 종료
+ * 귓속말 형식 검증 → /w 닉네임 내용이 아니면 안내 메시지 출력
+ * 종료 처리 강화 → /exit 입력 시 소켓 닫고 정상 종료
+ * GUI 연동 포인트 → System.out.println(msg) 대신 JTextArea.append(msg) 같은 방식으로 교체 가능
+*/
+
 package Common;
 
 import java.io.*;
 import java.net.*;
 
 public class ChatClient {
-    private static final int START_PORT = 12345; // 시작 포트
-    private static final int MAX_PORT = 12355;   // 시도할 최대 포트 범위
+    private static final int START_PORT = 12345;
+    private static final int MAX_PORT = 12355;
 
     public static void main(String[] args) {
-        String serverAddress = "localhost"; // 서버 주소
+        String serverAddress = "localhost";
         Socket socket = null;
         int port = START_PORT;
 
@@ -36,6 +43,10 @@ public class ChatClient {
             // 닉네임 입력
             System.out.print("닉네임을 입력하세요: ");
             String nickname = userInput.readLine();
+            if (nickname == null || nickname.isEmpty()) {
+                System.out.println("닉네임이 유효하지 않습니다. 종료합니다.");
+                return;
+            }
             out.println(nickname);
 
             // 서버 메시지 수신 스레드
@@ -44,11 +55,13 @@ public class ChatClient {
                     String msg;
                     while ((msg = in.readLine()) != null) {
                         System.out.println(msg);
+                        // TODO: GUI 연결 시 JTextArea.append(msg) 같은 방식으로 출력
                     }
                 } catch (IOException e) {
                     System.out.println("서버 연결 종료");
                 }
             });
+            receiveThread.setDaemon(true); // 프로그램 종료 시 자동 종료
             receiveThread.start();
 
             // 사용자 입력 → 서버 전송
@@ -64,6 +77,8 @@ public class ChatClient {
                                     + nickname + Protocol.SEPARATOR
                                     + receiver + Protocol.SEPARATOR
                                     + content);
+                    } else {
+                        System.out.println("귓속말 형식: /w 닉네임 내용");
                     }
                 } else {
                     // 일반 채팅
@@ -80,12 +95,14 @@ public class ChatClient {
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("클라이언트 오류: " + e.getMessage());
         } finally {
             try {
-                socket.close();
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                }
             } catch (IOException e) {
-                e.printStackTrace();
+                System.out.println("소켓 종료 실패");
             }
         }
     }

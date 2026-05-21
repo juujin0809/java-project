@@ -1,16 +1,11 @@
 import javax.swing.*;
+import components.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
-import components.LiquidButton;
-import components.UserDAO;
-import components.LiquidPanel;
-import components.GlassSmallButton;
-import components.ChatBubble;
-import components.PlaceholderTextField;
-import components.PlaceholderPasswordField;
+
 
 public class Main extends JFrame {
 
@@ -699,26 +694,32 @@ public class Main extends JFrame {
         inputBar.add(sendButton);
 
         sendButton.addActionListener(e -> {
-            String message = messageField.getRealText();
-            if (message.isEmpty()) return;
+            String input = messageField.getRealText();
+            if (input.isEmpty()) return;
 
             String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
 
-            if (message.startsWith("/귓속말 ")) {
-                String[] parts = message.split(" ", 3);
+            if (input.startsWith("/w ")) {
+                String[] parts = input.split(" ", 3);
 
                 if (parts.length < 3) {
-                    JOptionPane.showMessageDialog(this, "귓속말 형식: /귓속말 상대ID 메시지");
+                    JOptionPane.showMessageDialog(this, "귓속말 형식: /w 상대이름 메시지");
                     return;
                 }
 
-                String targetId = parts[1];
+                String targetNickname = parts[1];
                 String content = parts[2];
 
-                whisperHandler.sendWhisper(userId, targetId, content);
-                messagePanel.add(new ChatBubble(userId + " → " + targetId, "[귓속말] " + content, time, true));
+                whisperHandler.sendWhisper(targetNickname, content);
+
+                messagePanel.add(new ChatBubble(
+                        userId + " → " + targetNickname,
+                        "[귓속말] " + content,
+                        time,
+                        true
+                ));
             } else {
-                messagePanel.add(new ChatBubble(userId, message, time, true));
+                messagePanel.add(new ChatBubble(userId, input, time, true));
             }
 
             messagePanel.revalidate();
@@ -819,8 +820,8 @@ public class Main extends JFrame {
     }
 
     static class WhisperHandler {
-        public void sendWhisper(String fromUserId, String targetId, String content) {
-            System.out.println("WHISPER/" + fromUserId + "/" + targetId + "/" + content);
+        public void sendWhisper(String targetNickname, String content) {
+            System.out.println("WHISPER/" + targetNickname + "/" + content);
         }
     }
 }

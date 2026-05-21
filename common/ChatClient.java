@@ -1,6 +1,5 @@
 package ChatClient;
 
-import Common.Protocol;
 import java.io.*;
 import java.net.*;
 

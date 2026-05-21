@@ -1,4 +1,4 @@
-package ChatClient;
+package Common;
 
 import java.io.*;
 import java.net.*;

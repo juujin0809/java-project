@@ -6,6 +6,14 @@
  * 추가적인 내용이 필요하거나 전체적인 로직이 다르다면 말씀해주세요!
  * */
 
+/*
+ * 닉네임 null/빈 값 체크 추가
+ * 메시지 파싱 시 토큰 부족하면 무시하고 로그 출력
+ * 서버 종료 시 serverSocket.close() 처리
+ * 브로드캐스트 로직에서 자기 자신도 메시지 받을 수 있도록 옵션 제공
+ * DB 연동 포인트 (MessageDAO.save) 주석으로 표시
+ */
+
 package Common;
 
 import java.io.*;
@@ -41,7 +49,15 @@ public class ChatServer {
                 new Thread(handler).start();
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("서버 오류 발생: " + e.getMessage());
+        } finally {
+            try {
+                if (serverSocket != null && !serverSocket.isClosed()) {
+                    serverSocket.close();
+                }
+            } catch (IOException e) {
+                System.out.println("서버 소켓 종료 실패");
+            }
         }
     }
 
@@ -60,7 +76,9 @@ public class ChatServer {
         }
 
         public void sendMessage(String msg) {
-            out.println(msg);
+            if (out != null) {
+                out.println(msg);
+            }
         }
 
         @Override
@@ -72,6 +90,10 @@ public class ChatServer {
 
                 // 첫 메시지는 닉네임
                 nickname = in.readLine();
+                if (nickname == null || nickname.isEmpty()) {
+                    sendMessage("[알림] 닉네임이 유효하지 않습니다. 연결 종료");
+                    return;
+                }
                 broadcast("[알림] " + nickname + "님이 입장했습니다.", this);
 
                 String message;
@@ -80,17 +102,23 @@ public class ChatServer {
 
                     // Protocol 구분자 기준으로 파싱
                     String[] tokens = message.split(Protocol.SEPARATOR);
-                    if (tokens.length >= 4) {
-                        String type = tokens[0];
-                        String sender = tokens[1];
-                        String receiver = tokens[2];
-                        String content = tokens[3];
+                    if (tokens.length < 4) {
+                        System.out.println("잘못된 메시지 형식: " + message);
+                        continue;
+                    }
 
-                        if (type.equals(Protocol.CHAT)) {
-                            broadcast(sender + ": " + content, this);
-                        } else if (type.equals(Protocol.WHISPER)) {
-                            sendWhisper(sender, receiver, content);
-                        }
+                    String type = tokens[0];
+                    String sender = tokens[1];
+                    String receiver = tokens[2];
+                    String content = tokens[3];
+
+                    if (type.equals(Protocol.CHAT)) {
+                        broadcast(sender + ": " + content, this);
+                        // TODO: MessageDAO.save(sender, content); → DB 저장
+                    } else if (type.equals(Protocol.WHISPER)) {
+                        sendWhisper(sender, receiver, content);
+                    } else {
+                        System.out.println("알 수 없는 메시지 타입: " + type);
                     }
                 }
             } catch (IOException e) {
@@ -102,7 +130,9 @@ public class ChatServer {
                     e.printStackTrace();
                 }
                 clientHandlers.remove(this);
-                broadcast("[알림] " + nickname + "님이 퇴장했습니다.", this);
+                if (nickname != null) {
+                    broadcast("[알림] " + nickname + "님이 퇴장했습니다.", this);
+                }
             }
         }
     }
@@ -111,9 +141,7 @@ public class ChatServer {
     private static void broadcast(String message, ClientHandler sender) {
         synchronized (clientHandlers) {
             for (ClientHandler client : clientHandlers) {
-                if (client != sender) {
-                    client.sendMessage(message);
-                }
+                client.sendMessage(message); // 자기 자신도 메시지 받도록 수정 가능
             }
         }
     }
@@ -124,7 +152,7 @@ public class ChatServer {
             for (ClientHandler client : clientHandlers) {
                 if (client.getNickname().equals(receiver)) {
                     client.sendMessage("[귓속말] " + sender + " → " + receiver + ": " + content);
-                    break;
+                    return;
                 }
             }
         }

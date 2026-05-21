@@ -1,6 +1,5 @@
 package common;
 
-
 import java.io.PrintWriter;
 
 public class WhisperHandler {
@@ -8,20 +7,20 @@ public class WhisperHandler {
     // 서버에 메시지를 보내는 출력 스트림
     private PrintWriter out;
     
-    // 내 아이디 (보내는 사람)
-    private String myId;
+    // 내 닉네임 (보내는 사람)
+    private String myNickname;
     
     // 생성자
-    public WhisperHandler(PrintWriter out, String myId) {
+    public WhisperHandler(PrintWriter out, String myNickname) {
         this.out = out;
-        this.myId = myId;
+        this.myNickname = myNickname;
     }
     
-    // 귓속말 보내는 메서드
-    public void sendWhisper(String targetId, String message) {
+    // 귓속말 보내는 메서드 (/w 상대닉네임 내용 형식)
+    public void sendWhisper(String targetNickname, String message) {
         String packet = Protocol.WHISPER 
-                + Protocol.SEPARATOR + myId 
-                + Protocol.SEPARATOR + targetId 
+                + Protocol.SEPARATOR + myNickname 
+                + Protocol.SEPARATOR + targetNickname 
                 + Protocol.SEPARATOR + message;
         out.println(packet);
     }

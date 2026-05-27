@@ -10,7 +10,8 @@ public class DBConnection {
     private static final String PORT = "3306";
     private static final String DB_NAME = "chatdb";
     private static final String USER = "root";
-    private static final String PASSWORD = "1234";
+    //YS 서버 연결
+    private static final String PASSWORD = "1234abcd";
 
     private static final String COMMON_OPTIONS = "?serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8";
     private static final String SERVER_URL = "jdbc:mysql://" + HOST + ":" + PORT + "/" + COMMON_OPTIONS;

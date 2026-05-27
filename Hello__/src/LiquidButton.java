@@ -5,7 +5,8 @@ public class LiquidButton extends JButton {
 
     public LiquidButton(String text) {
         super(text);
-        setFont(new Font("Apple SD Gothic Neo", Font.BOLD, 16));
+        //수정 사항!!
+        setFont(new Font("Apple SD Gothic Neo", Font.BOLD, 14));
         setForeground(Color.WHITE);
         setFocusPainted(false);
         setBorderPainted(false);

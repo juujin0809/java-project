@@ -336,27 +336,35 @@ public class Main extends JFrame {
         card.setLayout(null);
 
         JLabel smallTitle = makeLabel("Welcome back", 16);
-        smallTitle.setBounds(160, 70, 300, 35);
+        //수정 사항!!
+        smallTitle.setBounds(160, 40, 300, 35);
         JLabel title = makeLabel("Messenger", 52);
-        title.setBounds(160, 105, 460, 75);
+        //수정 사항!!
+        title.setBounds(160, 70, 460, 75);
         JLabel subTitle = new JLabel("Create an account or log in to start chatting.");
         subTitle.setFont(mainFont(Font.BOLD, 16));
         subTitle.setForeground(new Color(55, 55, 70));
-        subTitle.setBounds(160, 178, 400, 35);
+        //수정 사항!!
+        subTitle.setBounds(160, 145, 400, 35);
 
         PlaceholderTextField idField = new PlaceholderTextField("User ID");
-        idField.setBounds(160, 240, 360, 55);
+        //수정 사항!!
+        idField.setBounds(160, 210, 360, 55);
         PlaceholderPasswordField pwField = new PlaceholderPasswordField("Password");
-        pwField.setBounds(160, 315, 360, 55);
+        //수정 사항!!
+        pwField.setBounds(160, 285, 360, 55);
 
         LiquidButton loginButton = new LiquidButton("Login");
-        loginButton.setBounds(160, 390, 360, 55);
+        //수정 사항!!
+        loginButton.setBounds(160, 360, 360, 55);
         JLabel signupText = new JLabel("First time here?");
         signupText.setFont(mainFont(Font.BOLD, 15));
         signupText.setForeground(new Color(55, 55, 70));
-        signupText.setBounds(185, 445, 190, 35);
+        //수정 사항!!
+        signupText.setBounds(185, 415, 190, 35);
         GlassSmallButton signupButton = new GlassSmallButton("Sign Up");
-        signupButton.setBounds(360, 444, 140, 34);
+        //수정 사항!!
+        signupButton.setBounds(360, 414, 140, 34);
 
         loginButton.addActionListener(e -> {
             String id = idField.getRealText();
@@ -397,18 +405,23 @@ public class Main extends JFrame {
         card.setLayout(null);
 
         JButton backButton = new JButton("← Login");
-        backButton.setBounds(145, 65, 100, 30);
+        //수정 사항!!
+        backButton.setBounds(145, 40, 100, 30);
         backButton.setFont(mainFont(Font.BOLD, 14));
         backButton.setContentAreaFilled(false); backButton.setBorderPainted(false);
 
         JLabel title = makeLabel("Create Account", 44);
-        title.setBounds(160, 115, 460, 70);
+        //수정 사항!!
+        title.setBounds(160, 80, 460, 70);
         PlaceholderTextField idField = new PlaceholderTextField("New User ID");
-        idField.setBounds(160, 250, 360, 55);
+        //수정 사항!!
+        idField.setBounds(160, 215, 360, 55);
         PlaceholderPasswordField pwField = new PlaceholderPasswordField("New Password");
-        pwField.setBounds(160, 325, 360, 55);
+        //수정 사항!!
+        pwField.setBounds(160, 290, 360, 55);
         LiquidButton signupButton = new LiquidButton("Sign Up");
-        signupButton.setBounds(160, 405, 360, 58);
+        //수정 사항!!
+        signupButton.setBounds(160, 370, 360, 58);
 
         signupButton.addActionListener(e -> {
             String id = idField.getRealText();

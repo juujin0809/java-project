@@ -4,7 +4,8 @@ import java.awt.*;
 public class GlassSmallButton extends JButton {
     public GlassSmallButton(String text) {
         super(text);
-        setFont(new Font("SansSerif", Font.BOLD, 15));
+        //수정 사항!!
+        setFont(new Font("SansSerif", Font.BOLD, 17));
         setForeground(Color.WHITE);
         setFocusPainted(false);
         setBorderPainted(false);
@@ -21,8 +22,8 @@ public class GlassSmallButton extends JButton {
 
         g2.setColor(new Color(255, 255, 255, 180));
         g2.drawRoundRect(1, 1, getWidth() - 3, getHeight() - 3, 22, 22);
-
-        g2.setColor(new Color(255, 205, 245, 160));
+// 수정 사항!!
+        g2.setColor(new Color(190,130, 255, 220));
         g2.fillRoundRect(5, 5, getWidth() - 10, getHeight() - 10, 18, 18);
 
         super.paintComponent(g);

@@ -10,7 +10,8 @@ public class SystemMessage extends JPanel {
 
         JLabel label = new JLabel(message);
         label.setFont(new Font("SansSerif", Font.BOLD, 13));
-        label.setForeground(new Color(255, 255, 255, 245));
+        //수정 사항 !!
+        label.setForeground(new Color(85, 85, 100));
 
         add(label);
         setMaximumSize(new Dimension(690, 38));

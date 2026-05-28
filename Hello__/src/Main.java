@@ -365,6 +365,31 @@ public class Main extends JFrame {
         GlassSmallButton signupButton = new GlassSmallButton("Sign Up");
         //수정 사항!!
         signupButton.setBounds(360, 414, 140, 34);
+     // 오른쪽 미리보기 채팅 카드
+        LiquidPanel previewPanel = new LiquidPanel(32, new Color(255, 255, 255, 95));
+        previewPanel.setBounds(565, 70, 140, 330);
+        previewPanel.setLayout(null);
+
+        JLabel previewTitle = new JLabel("Chat");
+        previewTitle.setFont(titleFont(25));
+        previewTitle.setForeground(new Color(45, 45, 60));
+        previewTitle.setBounds(27, 24, 100, 35);
+
+        LiquidPanel previewBubble1 = new LiquidPanel(22, new Color(255, 255, 255, 215));
+        previewBubble1.setBounds(27, 85, 92, 45);
+
+        LiquidPanel previewBubble2 = new LiquidPanel(22, new Color(194, 145, 255, 185));
+        previewBubble2.setBounds(45, 155, 88, 45);
+
+        LiquidPanel previewBubble3 = new LiquidPanel(22, new Color(178, 245, 225, 170));
+        previewBubble3.setBounds(25, 225, 95, 45);
+
+        previewPanel.add(previewTitle);
+        previewPanel.add(previewBubble1);
+        previewPanel.add(previewBubble2);
+        previewPanel.add(previewBubble3);
+
+        card.add(previewPanel);
 
         loginButton.addActionListener(e -> {
             String id = idField.getRealText();

@@ -502,8 +502,38 @@ public class Main extends JFrame {
         LiquidButton inviteButton = new LiquidButton("Add to List");
         inviteButton.setBounds(20, 270, 260, 45);
         inviteButton.addActionListener(e -> addFriendFromInput());
-        friendPanel.add(friendTitle); friendPanel.add(friendScroll); friendPanel.add(inviteButton);
+        //귓속말 실행 버튼 
+        Image img = new ImageIcon("src/images/whisper.png")
+                .getImage()
+                .getScaledInstance(28, 28, Image.SCALE_SMOOTH);
 
+        JButton whisperButton = new JButton(new ImageIcon(img));
+        whisperButton.setBounds(230, 20, 40, 40);
+        whisperButton.setBorderPainted(false);
+        whisperButton.setContentAreaFilled(false);
+        whisperButton.setFocusPainted(false);
+        whisperButton.setOpaque(false);
+        whisperButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        whisperButton.addActionListener(e -> {
+            int index = friendList.getSelectedIndex();
+
+            if (index < 0) {
+                JOptionPane.showMessageDialog(this, "귓속말할 친구를 선택해주세요.");
+                return;
+            }
+
+            String selectedText = friendModel.getElementAt(index);
+            String targetName = selectedText.replace("● 친구", "").trim();
+
+            fadeToScreen(() -> showWhisperScreen(userId, targetName));
+        });
+        
+        friendPanel.add(friendTitle);
+        friendPanel.add(whisperButton);
+        friendPanel.add(friendScroll);
+        friendPanel.add(inviteButton);
+        
         // 🌟 기존 UI 톤에 맞춘 채팅방 목록/생성 영역
         LiquidPanel roomPanel = new LiquidPanel(28, new Color(255, 255, 255, 225));
         roomPanel.setBounds(380, 125, 360, 330);
@@ -555,6 +585,77 @@ public class Main extends JFrame {
         setContentPane(background);
         requestFriendList();
         revalidate(); repaint();
+    }
+//귓속말...메서드
+    private void showWhisperScreen(String userId, String targetName) {
+        JPanel background = createLiquidBackground();
+
+        LiquidPanel appCard = new LiquidPanel(38, new Color(255, 255, 255, 145));
+        appCard.setBounds(120, 45, 660, 500);
+        appCard.setLayout(null);
+
+        JLabel title = new JLabel(targetName + "님과의 귓속말");
+        title.setFont(mainFont(Font.BOLD, 24));
+        title.setBounds(40, 25, 380, 40);
+
+        GlassSmallButton backButton = new GlassSmallButton("Back");
+        backButton.setBounds(500, 28, 110, 34);
+        backButton.addActionListener(e -> fadeToScreen(() -> showMainScreen(userId)));
+
+        JPanel messagePanel = new JPanel();
+        messagePanel.setOpaque(false);
+        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+
+        JScrollPane chatScroll = new JScrollPane(messagePanel);
+        chatScroll.setBounds(40, 85, 580, 300);
+        chatScroll.setBorder(BorderFactory.createEmptyBorder());
+        chatScroll.setOpaque(false);
+        chatScroll.getViewport().setOpaque(false);
+
+        LiquidPanel inputBar = new LiquidPanel(35, new Color(255, 255, 255, 235));
+        inputBar.setBounds(40, 410, 580, 62);
+        inputBar.setLayout(null);
+
+        PlaceholderTextField messageField = new PlaceholderTextField("귓속말을 입력하세요...");
+        messageField.setBounds(25, 10, 390, 42);
+
+        LiquidButton sendButton = new LiquidButton("Send");
+        sendButton.setBounds(425, 10, 130, 42);
+
+        sendButton.addActionListener(e -> {
+            String input = messageField.getRealText();
+            if (input.isEmpty()) return;
+
+            String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+
+            if (out != null) {
+                out.println("WHISPER/귓속말/" + userId + "/" + targetName + "/" + input);
+            }
+
+            messagePanel.add(new ChatBubble(userId + " → " + targetName, "[귓속말] " + input, time, true));
+            messagePanel.revalidate();
+            messagePanel.repaint();
+
+            JScrollBar vertical = chatScroll.getVerticalScrollBar();
+            vertical.setValue(vertical.getMaximum());
+
+            messageField.clearAfterSend();
+        });
+
+        messageField.addActionListener(e -> sendButton.doClick());
+
+        inputBar.add(messageField);
+        inputBar.add(sendButton);
+
+        appCard.add(title);
+        appCard.add(backButton);
+        appCard.add(chatScroll);
+        appCard.add(inputBar);
+
+        background.add(appCard);
+        setContentPane(background);
+        revalidate();
+        repaint();
     }
 
     private void showChatScreen(String userId, String roomName) {

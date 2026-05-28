@@ -26,9 +26,6 @@ public class Main extends JFrame {
     private JPanel currentMessagePanel;
     private JScrollPane currentChatScroll;
 
-    // 🌟 [추가] 내부 클래스 WhisperHandler 객체 선언
-    private WhisperHandler whisperHandler;
-
     public Main() {
         // 🌟 고정방 딱 2개만 선언하고 시작!
         roomModel.addElement("B팀 방");
@@ -41,158 +38,149 @@ public class Main extends JFrame {
         if (socket != null && socket.isConnected() && !socket.isClosed() && out != null && in != null) {
             return true;
         }
+
+        if (tryConnect(serverHost)) {
+            return true;
+        }
+
+        String inputHost = JOptionPane.showInputDialog(
+                this,
+                "서버 연결 실패!\n" +
+                "서버를 실행한 컴퓨터의 IP를 입력하세요.\n" +
+                "같은 컴퓨터에서 실행 중이면 localhost를 입력하면 됩니다.",
+                serverHost
+        );
+
+        if (inputHost == null || inputHost.trim().isEmpty()) {
+            return false;
+        }
+
+        serverHost = inputHost.trim();
+        return tryConnect(serverHost);
+    }
+
+    private boolean tryConnect(String host) {
         try {
-            socket = new Socket(serverHost, SERVER_PORT);
-            out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true);
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+            socket = new Socket(host, SERVER_PORT);
+            out = new PrintWriter(socket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            System.out.println("서버 연결 성공: " + host + ":" + SERVER_PORT);
             return true;
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "서버 연결 실패: " + e.getMessage(), "오류", JOptionPane.ERROR_MESSAGE);
+            closeConnection();
+            System.out.println("서버 연결 실패: " + host + ":" + SERVER_PORT + " / " + e.getMessage());
             return false;
         }
     }
 
-    private void showLoginScreen() {
-        setTitle("로그인");
-        setSize(450, 600);
-        setLocationRelativeTo(null);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    private String sendAuthRequest(String request) {
+        if (!connectToServer()) {
+            JOptionPane.showMessageDialog(this, "서버 연결 실패! ChatServer.java가 켜져 있는지 확인해주세요.");
+            return null;
+        }
 
-        JPanel background = createLiquidBackground();
-
-        JLabel titleLabel = new JLabel("Chat Login");
-        titleLabel.setFont(new Font("Apple SD Gothic Neo", Font.BOLD, 28));
-        titleLabel.setForeground(new Color(85, 85, 100));
-        titleLabel.setBounds(40, 60, 300, 40);
-        background.add(titleLabel);
-
-        PlaceholderTextField idField = new PlaceholderTextField("아이디를 입력하세요");
-        idField.setBounds(40, 140, 354, 46);
-        background.add(idField);
-
-        PlaceholderPasswordField pwField = new PlaceholderPasswordField("비밀번호를 입력하세요");
-        pwField.setBounds(40, 200, 354, 46);
-        background.add(pwField);
-
-        LiquidButton loginBtn = new LiquidButton("로그인");
-        loginBtn.setBounds(40, 280, 354, 48);
-        background.add(loginBtn);
-
-        GlassSmallButton signupBtn = new GlassSmallButton("회원가입 하러가기");
-        signupBtn.setBounds(40, 350, 354, 44);
-        background.add(signupBtn);
-
-        loginBtn.addActionListener(e -> {
-            String id = idField.getRealText();
-            String pw = pwField.getRealPassword();
-            if (id.isEmpty() || pw.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "아이디와 비밀번호를 모두 입력하세요.");
-                return;
-            }
-            sendAuthRequest("LOGIN", id, pw);
-        });
-
-        signupBtn.addActionListener(e -> {
-            String id = idField.getRealText();
-            String pw = pwField.getRealPassword();
-            if (id.isEmpty() || pw.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "회원가입할 아이디와 비밀번호를 입력창에 적어주세요.");
-                return;
-            }
-            sendAuthRequest("SIGNUP", id, pw);
-        });
-
-        setContentPane(background);
-        setVisible(true);
-    }
-
-    private void sendAuthRequest(String type, String id, String pw) {
-        if (!connectToServer()) return;
-
-        out.println(type + Protocol.SEPARATOR + id + Protocol.SEPARATOR + pw);
-
-        if (!receiveThreadStarted) {
-            startReceiveThread();
-            receiveThreadStarted = true;
+        try {
+            out.println(request);
+            return in.readLine();
+        } catch (Exception e) {
+            closeConnection();
+            JOptionPane.showMessageDialog(this, "서버 응답을 받지 못했습니다. 서버를 다시 확인해주세요.");
+            return null;
         }
     }
 
     private void startReceiveThread() {
-        new Thread(() -> {
+        if (receiveThreadStarted) return;
+        receiveThreadStarted = true;
+
+        Thread receiveThread = new Thread(() -> {
             try {
-                String line;
-                while ((line = in.readLine()) != null) {
-                    final String msg = line;
-                    SwingUtilities.invokeLater(() -> handleServerMessage(msg));
+                String msg;
+                while ((msg = in.readLine()) != null) {
+                    System.out.println("수신: " + msg);
+                    handleServerMessage(msg);
                 }
             } catch (IOException e) {
-                System.out.println("서버와 연결이 끊어졌습니다.");
+                System.out.println("서버 연결 종료");
+            } finally {
+                closeConnection();
+                receiveThreadStarted = false;
             }
-        }).start();
+        });
+        receiveThread.setDaemon(true);
+        receiveThread.start();
     }
 
-    private void handleServerMessage(String rawMsg) {
-        String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
-
-        if (rawMsg.startsWith("LOGIN_SUCCESS/")) {
-            String[] tokens = rawMsg.split("/", 2);
-            this.loginUserId = tokens[1];
-            
-            // 🌟 [추가] 로그인 성공 시 귓속말 담당 핸들러 초기화 생성
-            this.whisperHandler = new WhisperHandler(this.out, this.loginUserId);
-            
-            fadeToScreen("MAIN");
+    private void handleServerMessage(String msg) {
+        if (msg.startsWith("ROOM_LIST/")) {
+            String[] parts = msg.split("/", 2);
+            updateRoomList(parts.length >= 2 ? parts[1] : "");
             return;
-        } else if (rawMsg.startsWith("LOGIN_FAIL/")) {
-            String[] tokens = rawMsg.split("/", 2);
-            JOptionPane.showMessageDialog(this, "로그인 실패: " + tokens[1]);
+        }
+        if (msg.startsWith("ROOM_CREATED/")) {
+            String[] parts = msg.split("/", 2);
+            final String roomName = parts.length >= 2 ? parts[1] : "새 채팅방";
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "채팅방이 생성되었습니다: " + roomName));
             return;
-        } else if (rawMsg.startsWith("SIGNUP_SUCCESS")) {
-            JOptionPane.showMessageDialog(this, "회원가입 성공! 로그인해 주세요.");
+        }
+        if (msg.startsWith("ROOM_CREATE_FAIL/")) {
+            String[] parts = msg.split("/", 2);
+            final String roomFailMessage = parts.length >= 2 ? parts[1] : "채팅방 생성에 실패했습니다.";
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, roomFailMessage));
             return;
-        } else if (rawMsg.startsWith("SIGNUP_FAIL/")) {
-            String[] tokens = rawMsg.split("/", 2);
-            JOptionPane.showMessageDialog(this, "회원가입 실패: " + tokens[1]);
+        }
+        if (msg.startsWith("FRIEND_LIST/")) {
+            String[] parts = msg.split("/", 2);
+            updateFriendList(parts.length >= 2 ? parts[1] : "");
             return;
-        } else if (rawMsg.startsWith("FRIEND_LIST/")) {
-            String[] tokens = rawMsg.split("/", 2);
-            friendModel.clear();
-            if (tokens.length > 1 && !tokens[1].isEmpty()) {
-                String[] friends = tokens[1].split(",");
-                for (String f : friends) {
-                    friendModel.addElement(f.trim());
-                }
-            }
+        }
+        if (msg.startsWith("FRIEND_ADDED/")) {
+            String[] parts = msg.split("/", 2);
+            final String addedFriendName = parts.length >= 2 ? parts[1] : "친구";
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, addedFriendName + "님을 친구 목록에 추가했습니다."));
             return;
-        } else if (rawMsg.startsWith("FRIEND_ADD_FAIL/")) {
-            String[] tokens = rawMsg.split("/", 2);
-            JOptionPane.showMessageDialog(this, "친구 추가 실패: " + tokens[1]);
+        }
+        if (msg.startsWith("FRIEND_ADD_FAIL/")) {
+            String[] parts = msg.split("/", 2);
+            final String friendFailMessage = parts.length >= 2 ? parts[1] : "친구 추가에 실패했습니다.";
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, friendFailMessage));
+            return;
+        }
+        if (msg.startsWith("AUTH_REQUIRED/")) {
+            String[] parts = msg.split("/", 2);
+            final String authMessage = parts.length >= 2 ? parts[1] : "로그인이 먼저 필요합니다.";
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, authMessage));
             return;
         }
 
         if (currentMessagePanel == null) return;
 
-        // 🌟 [추가/수정] 서버로부터 온 메시지가 귓속말 패킷 포맷일 때 우선 처리
-        if (whisperHandler != null && whisperHandler.isWhisper(rawMsg)) {
-            String sender = whisperHandler.getSender(rawMsg);
-            String content = whisperHandler.getContent(rawMsg);
-            currentMessagePanel.add(new ChatBubble("[귓속말] " + sender, content, time, false));
-        } 
-        // 기존 일반 전체 대화 파싱 조건문 보존
-        else if (rawMsg.contains(": ")) {
-            String[] parts = rawMsg.split(": ", 2);
-            currentMessagePanel.add(new ChatBubble(parts[0], parts[1], time, false));
-        } 
-        // 기존 시스템 공지 메시지 파싱 조건문 보존
-        else {
-            currentMessagePanel.add(new SystemMessage(rawMsg));
-        }
+        String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+        final String finalMsg = msg;
 
-        currentMessagePanel.revalidate();
-        currentMessagePanel.repaint();
-
-        // 자동 스크롤 다운 로직 보존
         SwingUtilities.invokeLater(() -> {
+            if (finalMsg.startsWith("HISTORY/")) {
+                // 형식: HISTORY/yyyy-MM-dd/HH:mm/username/content
+                String[] parts = finalMsg.split("/", 5);
+                if (parts.length >= 5) {
+                    String historyTime = parts[2];
+                    String sender = parts[3];
+                    String content = parts[4];
+                    boolean isMine = sender.equals(loginUserId);
+                    currentMessagePanel.add(new ChatBubble(sender, content, historyTime, isMine));
+                }
+            } else if (finalMsg.startsWith("[알림]")) {
+                currentMessagePanel.add(new SystemMessage(finalMsg));
+            } else if (finalMsg.startsWith("[귓속말]")) {
+                currentMessagePanel.add(new ChatBubble("귓속말", finalMsg, time, false));
+            } else if (finalMsg.contains(": ")) {
+                String[] parts = finalMsg.split(": ", 2);
+                currentMessagePanel.add(new ChatBubble(parts[0], parts[1], time, false));
+            }
+
+            currentMessagePanel.revalidate();
+            currentMessagePanel.repaint();
+
             if (currentChatScroll != null) {
                 JScrollBar vertical = currentChatScroll.getVerticalScrollBar();
                 vertical.setValue(vertical.getMaximum());
@@ -200,221 +188,526 @@ public class Main extends JFrame {
         });
     }
 
-    private void fadeToScreen(String screenType) {
-        if (screenType.equals("MAIN")) {
-            getContentPane().removeAll();
-            showChatScreen(); // 🌟 원본 메서드 이름 100% 유지
+    private void requestRoomList() {
+        if (out != null) {
+            out.println("GET_ROOMS");
         }
     }
 
-    private void showChatScreen() {
-        setTitle("메인 실시간 대화방 - " + loginUserId);
-        setSize(960, 640);
+    private void requestFriendList() {
+        if (out != null) {
+            out.println("GET_FRIENDS");
+        }
+    }
+
+    private void addFriendFromInput() {
+        String inputFriendName = JOptionPane.showInputDialog(this, "친구로 추가할 사용자 ID를 입력하세요.");
+        if (inputFriendName == null) return;
+
+        String friendName = inputFriendName.trim();
+        if (friendName.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "친구 ID를 입력해주세요.");
+            return;
+        }
+        if (friendName.equals(loginUserId)) {
+            JOptionPane.showMessageDialog(this, "자기 자신은 친구로 추가할 수 없습니다.");
+            return;
+        }
+        if (friendName.length() > 50) {
+            JOptionPane.showMessageDialog(this, "친구 ID는 50자 이하로 입력해주세요.");
+            return;
+        }
+        if (friendName.contains("/") || friendName.contains("|")) {
+            JOptionPane.showMessageDialog(this, "친구 ID에는 / 또는 | 문자를 사용할 수 없습니다.");
+            return;
+        }
+        if (!connectToServer()) {
+            JOptionPane.showMessageDialog(this, "서버 연결 실패! ChatServer.java가 켜져 있는지 확인해주세요.");
+            return;
+        }
+        out.println("ADD_FRIEND/" + friendName);
+    }
+
+    private void createRoomFromInput() {
+        String roomName = JOptionPane.showInputDialog(this, "새 채팅방 이름을 입력하세요.");
+        if (roomName == null) return;
+
+        roomName = roomName.trim();
+        if (roomName.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "채팅방 이름을 입력해주세요.");
+            return;
+        }
+        if (roomName.length() > 30) {
+            JOptionPane.showMessageDialog(this, "채팅방 이름은 30자 이하로 입력해주세요.");
+            return;
+        }
+        if (roomName.contains("/") || roomName.contains("|")) {
+            JOptionPane.showMessageDialog(this, "채팅방 이름에는 / 또는 | 문자를 사용할 수 없습니다.");
+            return;
+        }
+        if (roomExistsInModel(roomName)) {
+            JOptionPane.showMessageDialog(this, "이미 목록에 있는 채팅방입니다.");
+            return;
+        }
+        if (!connectToServer()) {
+            JOptionPane.showMessageDialog(this, "서버 연결 실패! ChatServer.java가 켜져 있는지 확인해주세요.");
+            return;
+        }
+        out.println("CREATE_ROOM/" + roomName);
+    }
+
+    private boolean roomExistsInModel(String roomName) {
+        for (int i = 0; i < roomModel.size(); i++) {
+            if (roomModel.getElementAt(i).equals(roomName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void updateRoomList(String roomListText) {
+        SwingUtilities.invokeLater(() -> {
+            roomModel.clear();
+            if (roomListText != null && !roomListText.trim().isEmpty()) {
+                String[] rooms = roomListText.split("\\|\\|");
+                for (String room : rooms) {
+                    String cleanRoom = room.trim();
+                    if (!cleanRoom.isEmpty() && !roomExistsInModel(cleanRoom)) {
+                        roomModel.addElement(cleanRoom);
+                    }
+                }
+            }
+            if (roomModel.isEmpty()) {
+                roomModel.addElement("B팀 방");
+                roomModel.addElement("실습 게임 방");
+            }
+        });
+    }
+
+    private void updateFriendList(String friendListText) {
+        SwingUtilities.invokeLater(() -> {
+            friendModel.clear();
+            if (friendListText != null && !friendListText.trim().isEmpty()) {
+                String[] friends = friendListText.split("\\|\\|");
+                for (String friend : friends) {
+                    String cleanFriend = friend.trim();
+                    if (!cleanFriend.isEmpty()) {
+                        friendModel.addElement(cleanFriend + "   ● 친구");
+                    }
+                }
+            }
+        });
+    }
+
+    private void closeConnection() {
+        try { if (socket != null) socket.close(); } catch (IOException ignored) {}
+        socket = null;
+        out = null;
+        in = null;
+    }
+
+    private Font titleFont(int size) { return new Font("Arial Rounded MT Bold", Font.BOLD, size); }
+    private Font mainFont(int style, int size) { return new Font("Apple SD Gothic Neo", style, size); }
+    private JLabel makeLabel(String text, int size) {
+        JLabel label = new JLabel(text);
+        label.setFont(titleFont(size));
+        label.setForeground(new Color(35, 35, 45));
+        return label;
+    }
+
+    private ImageIcon loadIcon(String path, int width, int height) {
+        java.net.URL imgURL = getClass().getResource(path);
+        if (imgURL == null) return new ImageIcon();
+        ImageIcon icon = new ImageIcon(imgURL);
+        Image img = icon.getImage().getScaledInstance(width, height, Image.SCALE_SMOOTH);
+        return new ImageIcon(img);
+    }
+
+    private void showLoginScreen() {
+        setTitle("Messenger Login");
+        setSize(900, 620);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
+        setResizable(false);
 
         JPanel background = createLiquidBackground();
+        LiquidPanel card = new LiquidPanel(45, new Color(255, 255, 255, 130));
+        card.setBounds(80, 60, 740, 480);
+        card.setLayout(null);
 
-        JPanel appCard = new JPanel();
-        appCard.setLayout(null);
-        appCard.setBackground(new Color(255, 255, 255, 110));
-        appCard.setBounds(20, 20, 904, 562);
+        JLabel smallTitle = makeLabel("Welcome back", 16);
+        //수정 사항!!
+        smallTitle.setBounds(160, 40, 300, 35);
+        JLabel title = makeLabel("Messenger", 52);
+        //수정 사항!!
+        title.setBounds(160, 70, 460, 75);
+        JLabel subTitle = new JLabel("Create an account or log in to start chatting.");
+        subTitle.setFont(mainFont(Font.BOLD, 16));
+        subTitle.setForeground(new Color(55, 55, 70));
+        //수정 사항!!
+        subTitle.setBounds(160, 145, 400, 35);
 
-        // 1. 왼쪽 친구 영역 (디자인 및 스크롤 경계선 값 원본 유지)
-        LiquidPanel friendSide = new LiquidPanel(24, new Color(240, 242, 255, 140));
-        friendSide.setLayout(new BoxLayout(friendSide, BoxLayout.Y_AXIS));
-        friendSide.setBounds(10, 10, 190, 542);
-        friendSide.setBorder(BorderFactory.createEmptyBorder(15, 10, 15, 10));
+        PlaceholderTextField idField = new PlaceholderTextField("User ID");
+        //수정 사항!!
+        idField.setBounds(160, 210, 360, 55);
+        PlaceholderPasswordField pwField = new PlaceholderPasswordField("Password");
+        //수정 사항!!
+        pwField.setBounds(160, 285, 360, 55);
 
-        JLabel friendTitle = new JLabel(" 친구 목록");
-        friendTitle.setFont(new Font("Apple SD Gothic Neo", Font.BOLD, 15));
-        friendTitle.setForeground(new Color(90, 90, 110));
-        friendTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        LiquidButton loginButton = new LiquidButton("Login");
+        //수정 사항!!
+        loginButton.setBounds(160, 360, 360, 55);
+        JLabel signupText = new JLabel("First time here?");
+        signupText.setFont(mainFont(Font.BOLD, 15));
+        signupText.setForeground(new Color(55, 55, 70));
+        //수정 사항!!
+        signupText.setBounds(185, 415, 190, 35);
+        GlassSmallButton signupButton = new GlassSmallButton("Sign Up");
+        //수정 사항!!
+        signupButton.setBounds(360, 414, 140, 34);
+     // 오른쪽 미리보기 채팅 카드
+        LiquidPanel previewPanel = new LiquidPanel(32, new Color(255, 255, 255, 95));
+        previewPanel.setBounds(565, 70, 140, 330);
+        previewPanel.setLayout(null);
 
-        JList<String> friendList = new JList<>(friendModel);
-        friendList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        friendList.setFont(new Font("Apple SD Gothic Neo", Font.PLAIN, 13));
-        JScrollPane friendScroll = new JScrollPane(friendList);
-        friendScroll.setBorder(BorderFactory.createEmptyBorder());
-        friendScroll.setOpaque(false);
-        friendScroll.getViewport().setOpaque(false);
+        JLabel previewTitle = new JLabel("Chat");
+        previewTitle.setFont(titleFont(25));
+        previewTitle.setForeground(new Color(45, 45, 60));
+        previewTitle.setBounds(27, 24, 100, 35);
 
-        PlaceholderTextField addFriendField = new PlaceholderTextField("친구 아이디 추가");
-        addFriendField.setMaximumSize(new Dimension(170, 36));
-        addFriendField.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    String target = addFriendField.getRealText();
-                    if (!target.isEmpty()) {
-                        out.println("ADD_FRIEND" + Protocol.SEPARATOR + loginUserId + Protocol.SEPARATOR + target);
-                        addFriendField.setText("");
-                    }
-                }
+        LiquidPanel previewBubble1 = new LiquidPanel(22, new Color(255, 255, 255, 215));
+        previewBubble1.setBounds(27, 85, 92, 45);
+
+        LiquidPanel previewBubble2 = new LiquidPanel(22, new Color(194, 145, 255, 185));
+        previewBubble2.setBounds(45, 155, 88, 45);
+
+        LiquidPanel previewBubble3 = new LiquidPanel(22, new Color(178, 245, 225, 170));
+        previewBubble3.setBounds(25, 225, 95, 45);
+
+        previewPanel.add(previewTitle);
+        previewPanel.add(previewBubble1);
+        previewPanel.add(previewBubble2);
+        previewPanel.add(previewBubble3);
+
+        card.add(previewPanel);
+
+        loginButton.addActionListener(e -> {
+            String id = idField.getRealText();
+            String pw = pwField.getRealPassword();
+            if (id.isEmpty() || pw.isEmpty()) return;
+
+            String response = sendAuthRequest("LOGIN/" + id + "/" + pw);
+            if (response == null) return;
+
+            if (response.startsWith("LOGIN_SUCCESS")) {
+                loginUserId = id;
+                startReceiveThread();
+                requestRoomList();
+                requestFriendList();
+                fadeToScreen(() -> showMainScreen(id));
+            } else {
+                String[] parts = response.split("/", 2);
+                String message = parts.length >= 2 ? parts[1] : "로그인에 실패했습니다.";
+                JOptionPane.showMessageDialog(this, message);
             }
         });
 
-        // 🌟 [추가] 이미지 기획 요구사항인 귓속말 버튼 인스턴스 생성 및 액션 매핑
-        LiquidButton whisperButton = new LiquidButton("귓속말");
-        whisperButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        whisperButton.setMaximumSize(new Dimension(170, 38));
+        signupButton.addActionListener(e -> fadeToScreen(() -> showSignupScreen()));
+
+        card.add(smallTitle); card.add(title); card.add(subTitle);
+        card.add(idField); card.add(pwField); card.add(loginButton);
+        card.add(signupText); card.add(signupButton);
+        background.add(card);
+        setContentPane(background);
+        setVisible(true);
+        SwingUtilities.invokeLater(() -> card.requestFocusInWindow());
+    }
+
+    private void showSignupScreen() {
+        JPanel background = createLiquidBackground();
+        LiquidPanel card = new LiquidPanel(45, new Color(255, 255, 255, 140));
+        card.setBounds(80, 60, 740, 480);
+        card.setLayout(null);
+
+        JButton backButton = new JButton("← Login");
+        //수정 사항!!
+        backButton.setBounds(145, 40, 100, 30);
+        backButton.setFont(mainFont(Font.BOLD, 14));
+        backButton.setContentAreaFilled(false); backButton.setBorderPainted(false);
+
+        JLabel title = makeLabel("Create Account", 44);
+        //수정 사항!!
+        title.setBounds(160, 80, 460, 70);
+        PlaceholderTextField idField = new PlaceholderTextField("New User ID");
+        //수정 사항!!
+        idField.setBounds(160, 215, 360, 55);
+        PlaceholderPasswordField pwField = new PlaceholderPasswordField("New Password");
+        //수정 사항!!
+        pwField.setBounds(160, 290, 360, 55);
+        LiquidButton signupButton = new LiquidButton("Sign Up");
+        //수정 사항!!
+        signupButton.setBounds(160, 370, 360, 58);
+
+        signupButton.addActionListener(e -> {
+            String id = idField.getRealText();
+            String pw = pwField.getRealPassword();
+            if (id.isEmpty() || pw.isEmpty()) return;
+
+            String response = sendAuthRequest("SIGNUP/" + id + "/" + pw);
+            if (response == null) return;
+
+            if (response.startsWith("SIGNUP_SUCCESS")) {
+                JOptionPane.showMessageDialog(this, "회원가입 완료!");
+                fadeToScreen(() -> showLoginScreen());
+            } else {
+                String[] parts = response.split("/", 2);
+                String message = parts.length >= 2 ? parts[1] : "회원가입에 실패했습니다.";
+                JOptionPane.showMessageDialog(this, message);
+            }
+        });
+
+        backButton.addActionListener(e -> fadeToScreen(() -> showLoginScreen()));
+        card.add(backButton); card.add(title); card.add(idField); card.add(pwField); card.add(signupButton);
+        background.add(card);
+        setContentPane(background);
+    }
+
+    private void showMainScreen(String userId) {
+        JPanel background = createLiquidBackground();
+        LiquidPanel mainCard = new LiquidPanel(40, new Color(255, 255, 255, 120));
+        mainCard.setBounds(60, 45, 780, 500);
+        mainCard.setLayout(null);
+
+        JLabel title = makeLabel("Messenger", 34);
+        title.setBounds(40, 25, 300, 55);
+        JLabel userLabel = new JLabel(userId + "님, 안녕하세요");
+        userLabel.setFont(mainFont(Font.BOLD, 15));
+        userLabel.setBounds(42, 75, 300, 35);
+
+        // 🌟 [UI 변경] 가짜 데이터 없는 청정 친구 목록 구현
+        LiquidPanel friendPanel = new LiquidPanel(28, new Color(255, 255, 255, 225));
+        friendPanel.setBounds(40, 125, 300, 330);
+        friendPanel.setLayout(null);
+
+        JLabel friendTitle = makeLabel("Friends", 22);
+        friendTitle.setBounds(25, 15, 200, 45);
         
-        whisperButton.addActionListener(e -> {
-            String selectedFriend = friendList.getSelectedValue();
-            if (selectedFriend == null || selectedFriend.isEmpty()) {
-                JOptionPane.showMessageDialog(Main.this, "귓속말을 보낼 친구를 목록에서 선택해주세요!", "알림", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-            
-            // 타이핑 필요 없이 다이얼로그 팝업창으로 메시지 내용 입력받기
-            String content = JOptionPane.showInputDialog(Main.this, selectedFriend + " 님에게 보낼 귓속말 내용:", "귓속말 보내기", JOptionPane.PLAIN_MESSAGE);
-            
-            if (content != null && !content.trim().isEmpty()) {
-                String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
-                String activeRoom = (roomModel.size() > 0) ? roomModel.getElementAt(0) : "B팀 방"; 
-                
-                // 귓속말 패킷 서버 전송
-                whisperHandler.sendWhisper(activeRoom, selectedFriend, content.trim());
-                
-                // 내 화면 대화 영역에 내가 보낸 귓속말 말풍선 추가
-                currentMessagePanel.add(new ChatBubble(loginUserId + " → " + selectedFriend, "[귓속말] " + content.trim(), time, true));
-                currentMessagePanel.revalidate();
-                currentMessagePanel.repaint();
-                
-                SwingUtilities.invokeLater(() -> {
-                    if (currentChatScroll != null) {
-                        currentChatScroll.getVerticalScrollBar().setValue(currentChatScroll.getVerticalScrollBar().getMaximum());
-                    }
-                });
-            }
-        });
+        JList<String> friendList = new JList<>(friendModel);
+        friendList.setFont(mainFont(Font.PLAIN, 16));
+        friendList.setFixedCellHeight(45);
+        JScrollPane friendScroll = new JScrollPane(friendList);
+        friendScroll.setBounds(20, 70, 260, 180);
+        friendScroll.setBorder(BorderFactory.createEmptyBorder());
 
-        // 친구 아이디 더블클릭 시에도 귓속말 버튼 액션이 자동 실행되도록 구현
-        friendList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    whisperButton.doClick();
-                }
-            }
-        });
+        LiquidButton inviteButton = new LiquidButton("Add to List");
+        inviteButton.setBounds(20, 270, 260, 45);
+        inviteButton.addActionListener(e -> addFriendFromInput());
+        friendPanel.add(friendTitle); friendPanel.add(friendScroll); friendPanel.add(inviteButton);
 
-        friendSide.add(friendTitle);
-        friendSide.add(Box.createVerticalStrut(10));
-        friendSide.add(friendScroll);
-        friendSide.add(Box.createVerticalStrut(10));
-        friendSide.add(addFriendField);
-        friendSide.add(Box.createVerticalStrut(8)); // 입력필드와 버튼 사이 간격 추가
-        friendSide.add(whisperButton);               // 🌟 친구 사이드바 맨 하단에 귓속말 버튼 안착
+        // 🌟 기존 UI 톤에 맞춘 채팅방 목록/생성 영역
+        LiquidPanel roomPanel = new LiquidPanel(28, new Color(255, 255, 255, 225));
+        roomPanel.setBounds(380, 125, 360, 330);
+        roomPanel.setLayout(null);
 
-        // 2. 중간 방 목록 영역 (원본 소스 로직 및 수치 100% 보존)
-        LiquidPanel roomSide = new LiquidPanel(24, new Color(245, 240, 255, 140));
-        roomSide.setLayout(new BoxLayout(roomSide, BoxLayout.Y_AXIS));
-        roomSide.setBounds(210, 10, 170, 542);
-        roomSide.setBorder(BorderFactory.createEmptyBorder(15, 10, 15, 10));
-
-        JLabel roomTitleLabel = new JLabel(" 대화방 목록");
-        roomTitleLabel.setFont(new Font("Apple SD Gothic Neo", Font.BOLD, 15));
-        roomTitleLabel.setForeground(new Color(90, 90, 110));
-        roomTitleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel roomTitle = makeLabel("Chat Rooms", 22);
+        roomTitle.setBounds(25, 15, 230, 45);
 
         JList<String> roomList = new JList<>(roomModel);
-        roomList.setFont(new Font("Apple SD Gothic Neo", Font.PLAIN, 13));
-        JScrollPane roomScroll = new JScrollPane(roomList);
-        roomScroll.setBorder(BorderFactory.createEmptyBorder());
-        roomScroll.setOpaque(false);
-        roomScroll.getViewport().setOpaque(false);
-
-        roomSide.add(roomTitleLabel);
-        roomSide.add(Box.createVerticalStrut(10));
-        roomSide.add(roomScroll);
-
-        // 3. 오른쪽 채팅방 영역 (원본 컴포넌트 여백 및 바인딩 완벽 유지)
-        LiquidPanel chatArea = new LiquidPanel(32, new Color(255, 255, 255, 180));
-        chatArea.setLayout(null);
-        chatArea.setBounds(390, 10, 504, 542);
-
-        JLabel roomIcon = new JLabel("💬");
-        roomIcon.setFont(new Font("SansSerif", Font.PLAIN, 22));
-        roomIcon.setBounds(24, 18, 40, 30);
-
-        JLabel roomTitle = new JLabel("B팀 방");
-        roomTitle.setFont(new Font("Apple SD Gothic Neo", Font.BOLD, 18));
-        roomTitle.setForeground(new Color(70, 70, 85));
-        roomTitle.setBounds(64, 18, 250, 30);
-
-        GlassSmallButton logoutButton = new GlassSmallButton("로그아웃");
-        logoutButton.setFont(new Font("Apple SD Gothic Neo", Font.BOLD, 12));
-        logoutButton.setBounds(390, 16, 90, 34);
-        logoutButton.addActionListener(e -> {
-            try {
-                if (socket != null) socket.close();
-            } catch (Exception ex) {}
-            System.exit(0);
+        roomList.setFont(mainFont(Font.BOLD, 16));
+        roomList.setFixedCellHeight(55);
+        roomList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        
+        roomList.setCellRenderer(new DefaultListCellRenderer() {
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                label.setIcon(loadIcon("/images/room.png", 28, 28));
+                label.setIconTextGap(12);
+                label.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+                if (isSelected) {
+                    label.setBackground(new Color(255, 115, 190)); label.setForeground(Color.WHITE);
+                } else {
+                    label.setBackground(new Color(255, 255, 255, 150)); label.setForeground(new Color(35, 35, 45));
+                }
+                return label;
+            }
         });
 
-        currentMessagePanel = new JPanel();
-        currentMessagePanel.setLayout(new BoxLayout(currentMessagePanel, BoxLayout.Y_AXIS));
-        currentMessagePanel.setBackground(new Color(255, 255, 255, 0));
+        JScrollPane roomScroll = new JScrollPane(roomList);
+        roomScroll.setBounds(20, 70, 320, 150);
+        roomScroll.setBorder(BorderFactory.createEmptyBorder());
 
-        JScrollPane chatScroll = new JScrollPane(currentMessagePanel);
-        chatScroll.setBounds(14, 65, 476, 400);
+        LiquidButton createRoomButton = new LiquidButton("Create Room");
+        createRoomButton.setBounds(20, 230, 320, 42);
+        createRoomButton.addActionListener(e -> createRoomFromInput());
+
+        LiquidButton enterButton = new LiquidButton("Enter Chat");
+        enterButton.setBounds(20, 282, 320, 42);
+        enterButton.addActionListener(e -> {
+            int index = roomList.getSelectedIndex();
+            if (index < 0) index = 0;
+            String roomToOpen = roomModel.getElementAt(index);
+            fadeToScreen(() -> showChatScreen(userId, roomToOpen));
+        });
+
+        roomPanel.add(roomTitle); roomPanel.add(roomScroll); roomPanel.add(createRoomButton); roomPanel.add(enterButton);
+        mainCard.add(title); mainCard.add(userLabel); mainCard.add(friendPanel); mainCard.add(roomPanel);
+        background.add(mainCard);
+        setContentPane(background);
+        requestFriendList();
+        revalidate(); repaint();
+    }
+
+    private void showChatScreen(String userId, String roomName) {
+        JPanel background = createLiquidBackground();
+        LiquidPanel appCard = new LiquidPanel(38, new Color(255, 255, 255, 145));
+        appCard.setBounds(25, 35, 840, 535);
+        appCard.setLayout(null);
+
+        // 🌟 가짜 친구 목록 UI 완전히 삭제된 깨끗한 사이드바
+        JPanel friendSide = new JPanel(null);
+        friendSide.setOpaque(false); friendSide.setBounds(0, 0, 170, 535);
+
+        JLabel profileImg = new JLabel(loadIcon("/images/myProfile.png", 42, 42));
+        profileImg.setBounds(25, 25, 42, 42);
+        JLabel userName = new JLabel(userId);
+        userName.setFont(mainFont(Font.BOLD, 20));
+        userName.setBounds(78, 28, 120, 28);
+        JLabel online = new JLabel("● 온라인");
+        online.setFont(mainFont(Font.BOLD, 12)); online.setForeground(new Color(45, 200, 105));
+        online.setBounds(80, 55, 100, 20);
+        
+        friendSide.add(profileImg); friendSide.add(userName); friendSide.add(online);
+        
+        // 중앙 고정방 이동 탭 
+        JPanel roomSide = new JPanel(null);
+        roomSide.setOpaque(false); roomSide.setBounds(170, 0, 200, 535);
+
+        JLabel roomListTitle = new JLabel("채팅방");
+        roomListTitle.setFont(mainFont(Font.BOLD, 18));
+        roomListTitle.setBounds(25, 35, 100, 30);
+
+        JPanel roomBox = new JPanel(null);
+        roomBox.setOpaque(false);
+        roomBox.setPreferredSize(new Dimension(165, Math.max(340, roomModel.size() * 58)));
+
+        JScrollPane sideRoomScroll = new JScrollPane(roomBox);
+        sideRoomScroll.setBounds(18, 90, 165, 340);
+        sideRoomScroll.setBorder(BorderFactory.createEmptyBorder());
+        sideRoomScroll.setOpaque(false);
+        sideRoomScroll.getViewport().setOpaque(false);
+
+        for (int i = 0; i < roomModel.size(); i++) {
+            String rName = roomModel.getElementAt(i);
+            JLabel roomItem = new JLabel(rName);
+            roomItem.setIcon(loadIcon("/images/room.png", 24, 24));
+            roomItem.setIconTextGap(10);
+            roomItem.setFont(mainFont(Font.BOLD, 13));
+            roomItem.setOpaque(true);
+            roomItem.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+            roomItem.setBounds(0, i * 58, 165, 50);
+
+            if (rName.equals(roomName)) {
+                roomItem.setBackground(new Color(255, 115, 190)); roomItem.setForeground(Color.WHITE);
+            } else {
+                roomItem.setBackground(new Color(255, 255, 255, 130)); roomItem.setForeground(new Color(50, 50, 65));
+            }
+
+            roomItem.addMouseListener(new MouseAdapter() {
+                public void mouseClicked(MouseEvent e) {
+                    if (!rName.equals(roomName)) showChatScreen(userId, rName);
+                }
+            });
+            roomBox.add(roomItem);
+        }
+        roomSide.add(roomListTitle); roomSide.add(sideRoomScroll);
+
+        // 실제 채팅 공간
+        JPanel chatArea = new JPanel(null) {
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                GradientPaint gp = new GradientPaint(0, 0, new Color(255, 224, 240, 155), getWidth(), getHeight(), new Color(220, 235, 255, 170));
+                g2.setPaint(gp); g2.fillRoundRect(0, 0, getWidth(), getHeight(), 32, 32);
+            }
+        };
+        chatArea.setBounds(370, 0, 470, 535); chatArea.setOpaque(false);
+
+        JLabel roomIcon = new JLabel(loadIcon("/images/room.png", 36, 36));
+        roomIcon.setBounds(28, 24, 36, 36);
+        JLabel roomTitle = new JLabel(roomName);
+        roomTitle.setFont(mainFont(Font.BOLD, 24));
+        roomTitle.setBounds(75, 25, 240, 35);
+
+        // 🌟 나가기 버튼 클릭 시 다시 로비(대기실) 신분으로 원복 신고
+        GlassSmallButton logoutButton = new GlassSmallButton("Leave");
+        logoutButton.setBounds(325, 28, 115, 34);
+        logoutButton.addActionListener(e -> {
+            if (out != null) out.println("JOIN/대기실/" + userId);
+            fadeToScreen(() -> showMainScreen(userId));
+        });
+
+        JPanel messagePanel = new JPanel();
+        messagePanel.setOpaque(false); messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+        JScrollPane chatScroll = new JScrollPane(messagePanel);
+        chatScroll.setBounds(25, 90, 420, 330);
         chatScroll.setBorder(BorderFactory.createEmptyBorder());
-        chatScroll.setOpaque(false);
-        chatScroll.getViewport().setOpaque(false);
-        chatScroll.getVerticalScrollBar().setUnitIncrement(16);
-        this.currentChatScroll = chatScroll;
+        chatScroll.setOpaque(false); chatScroll.getViewport().setOpaque(false);
 
-        JPanel inputBar = new JPanel();
-        inputBar.setLayout(null);
-        inputBar.setOpaque(false);
-        inputBar.setBounds(14, 478, 476, 50);
+        currentMessagePanel = messagePanel;
+        currentChatScroll = chatScroll;
+
+        // 🌟 [방 변경 신고] 채팅창이 열리자마자 서버에 "나 이 방에 들어왔어!" 라고 통보
+        if (out != null) {
+            out.println("JOIN/" + roomName + "/" + userId);
+        }
+
+        LiquidPanel inputBar = new LiquidPanel(35, new Color(255, 255, 255, 235));
+        inputBar.setBounds(25, 445, 420, 62); inputBar.setLayout(null);
 
         PlaceholderTextField messageField = new PlaceholderTextField("메시지를 입력하세요...");
-        messageField.setBounds(0, 0, 385, 46);
+        messageField.setBounds(25, 10, 280, 42); // 왼쪽 여백 정렬 조절
+        LiquidButton sendButton = new LiquidButton("Send");
+        sendButton.setBounds(310, 10, 95, 42);
 
-        LiquidButton sendButton = new LiquidButton("전송");
-        sendButton.setBounds(395, 0, 81, 44);
-
-        // 엔터키 및 전송 버튼 액션 리스너 바인딩 (안전한 Protocol.SEPARATOR 구조 반영)
-        ActionListener sendAction = e -> {
+        // 🌟 메시지를 보낼 때 어떤 방인지 "방 이름(roomName)"을 패킷에 심어서 보냄
+        sendButton.addActionListener(e -> {
             String input = messageField.getRealText();
             if (input.isEmpty()) return;
 
             String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
-            
-            // 원본 CHAT 구조 전송 유지
-            out.println("CHAT" + Protocol.SEPARATOR + "B팀 방" + Protocol.SEPARATOR + loginUserId + Protocol.SEPARATOR + "ALL" + Protocol.SEPARATOR + input);
-            
-            currentMessagePanel.add(new ChatBubble(loginUserId, input, time, true));
-            messageField.setText("");
-            
-            currentMessagePanel.revalidate();
-            currentMessagePanel.repaint();
-            
+
+            if (input.startsWith("/w ") || input.startsWith("/귓속말 ")) {
+                String[] parts = input.split(" ", 3);
+                if (parts.length >= 3) {
+                    String targetNickname = parts[1];
+                    String content = parts[2];
+                    if (out != null) {
+                        out.println("WHISPER/" + roomName + "/" + userId + "/" + targetNickname + "/" + content);
+                    }
+                    messagePanel.add(new ChatBubble(userId + " → " + targetNickname, "[귓속말] " + content, time, true));
+                }
+            } else {
+                // 일반 대화 패킷 규격 업그레이드: CHAT/방이름/내ID/ALL/메시지
+                if (out != null) {
+                    out.println("CHAT/" + roomName + "/" + userId + "/ALL/" + input);
+                }
+                messagePanel.add(new ChatBubble(userId, input, time, true));
+            }
+
+            messagePanel.revalidate(); messagePanel.repaint();
             SwingUtilities.invokeLater(() -> chatScroll.getVerticalScrollBar().setValue(chatScroll.getVerticalScrollBar().getMaximum()));
-        };
+            messageField.clearAfterSend(); messageField.requestFocusInWindow();
+        });
 
-        messageField.addActionListener(sendAction);
-        sendButton.addActionListener(sendAction);
-
-        inputBar.add(messageField); 
-        inputBar.add(sendButton);
-
-        chatArea.add(roomIcon); 
-        chatArea.add(roomTitle); 
-        chatArea.add(logoutButton);
-        chatArea.add(chatScroll); 
-        chatArea.add(inputBar);
+        messageField.addActionListener(e -> sendButton.doClick());
+        inputBar.add(messageField); inputBar.add(sendButton);
         
-        appCard.add(friendSide); 
-        appCard.add(roomSide); 
-        appCard.add(chatArea);
+        chatArea.add(roomIcon); chatArea.add(roomTitle); chatArea.add(logoutButton);
+        chatArea.add(chatScroll); chatArea.add(inputBar);
+        appCard.add(friendSide); appCard.add(roomSide); appCard.add(chatArea);
         background.add(appCard);
-        
         setContentPane(background);
-        revalidate(); 
-        repaint();
-        
+        revalidate(); repaint();
         SwingUtilities.invokeLater(() -> messageField.requestFocusInWindow());
     }
 
@@ -425,69 +718,20 @@ public class Main extends JFrame {
                 Graphics2D g2 = (Graphics2D) g;
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 GradientPaint base = new GradientPaint(0, 0, new Color(255, 241, 247), getWidth(), getHeight(), new Color(226, 240, 255));
-                g2.setPaint(base); 
-                g2.fillRect(0, 0, getWidth(), getHeight());
+                g2.setPaint(base); g2.fillRect(0, 0, getWidth(), getHeight());
             }
         };
-
-        // 🌟 이 핵심 코드가 있어야 컴포넌트들이 화면에 나타납니다! (원본 고스란히 보존)
-        background.setLayout(null);
-
+        
+        // 🌟 이 핵심 코드가 있어야 컴포넌트들이 화면에 나타납니다!
+        background.setLayout(null); 
+        
         return background;
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new Main());
+    private void fadeToScreen(Runnable nextScreen) {
+        Timer timer = new Timer(120, e -> { nextScreen.run(); revalidate(); repaint(); });
+        timer.setRepeats(false); timer.start();
     }
 
-    // ====================================================================
-    // 🌟 [추가] WhisperHandler 클래스를 내부 스캔 구조(Inner Class)로 매핑하여 내장
-    // ====================================================================
-    private class WhisperHandler {
-        private PrintWriter out;
-        private String myNickname; 
-        
-        public WhisperHandler(PrintWriter out, String myNickname) {
-            this.out = out;
-            this.myNickname = myNickname;
-        }
-        
-        public void sendWhisper(String currentRoom, String targetNickname, String message) {
-            String packet = Protocol.CHAT 
-                    + Protocol.SEPARATOR + currentRoom 
-                    + Protocol.SEPARATOR + myNickname 
-                    + Protocol.SEPARATOR + targetNickname 
-                    + Protocol.SEPARATOR + message;
-            out.println(packet);
-        }
-        
-        public boolean isWhisper(String serverMessage) {
-            return serverMessage != null && serverMessage.startsWith("[귓속말]");
-        }
-        
-        public String getSender(String serverMessage) {
-            try {
-                int start = serverMessage.indexOf("] ") + 2;
-                int end = serverMessage.indexOf(" →");
-                if (start >= 0 && end > start) {
-                    return serverMessage.substring(start, end).trim();
-                }
-            } catch (Exception e) {
-                System.out.println("귓속말 발신자 추출 오류: " + e.getMessage());
-            }
-            return "Unknown";
-        }
-        
-        public String getContent(String serverMessage) {
-            try {
-                int start = serverMessage.indexOf(": ");
-                if (start >= 0) {
-                    return serverMessage.substring(start + 2);
-                }
-            } catch (Exception e) {
-                System.out.println("귓속말 본문 추출 오류: " + e.getMessage());
-            }
-            return serverMessage;
-        }
-    }
+    public static void main(String[] args) { new Main(); }
 }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry excluding="src/|hello/src/|Socket_project/src/|TeamProject/src/|Hello__/src/|common/" kind="src" path=""/>
+	<classpathentry kind="src" path="common"/>
+	<classpathentry kind="src" path="Hello__/src"/>
+	<classpathentry kind="src" path="hello/src"/>
+	<classpathentry kind="src" path="Socket_project/src"/>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="src" path="TeamProject/src"/>
+	<classpathentry kind="output" path="Hello__/bin"/>
+</classpath>

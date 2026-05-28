@@ -4,41 +4,62 @@ import java.io.PrintWriter;
 
 public class WhisperHandler {
     
-    // 서버에 메시지를 보내는 출력 스트림
     private PrintWriter out;
+    private String myNickname; // 내 닉네임 (보내는 사람)
     
-    // 내 닉네임 (보내는 사람)
-    private String myNickname;
-    
-    // 생성자
     public WhisperHandler(PrintWriter out, String myNickname) {
         this.out = out;
         this.myNickname = myNickname;
     }
     
-    // 귓속말 보내는 메서드 (/w 상대닉네임 내용 형식)
-    public void sendWhisper(String targetNickname, String message) {
-        String packet = Protocol.WHISPER 
+    /**
+     * 귓속말 패킷 전송 (규격: CHAT◀▶방이름◀▶보내는사람◀▶받는사람◀▶메시지내용)
+     * ChatServer가 패킷을 parsing할 때 이 순서를 기대합니다.
+     */
+    public void sendWhisper(String currentRoom, String targetNickname, String message) {
+        String packet = Protocol.CHAT 
+                + Protocol.SEPARATOR + currentRoom 
                 + Protocol.SEPARATOR + myNickname 
                 + Protocol.SEPARATOR + targetNickname 
                 + Protocol.SEPARATOR + message;
         out.println(packet);
     }
     
-    // 받은 메시지가 귓속말인지 확인
-    public boolean isWhisper(String message) {
-        return message.startsWith(Protocol.WHISPER);
+    /**
+     * 서버에서 수신된 메시지가 귓속말 포맷인지 확인
+     */
+    public boolean isWhisper(String serverMessage) {
+        return serverMessage != null && serverMessage.startsWith("[귓속말]");
     }
     
-    // 보낸사람 추출
-    public String getSender(String message) {
-        String[] parts = message.split(Protocol.SEPARATOR);
-        return parts[1];
+    /**
+     * "[귓속말] sender → receiver: content" 형태에서 보낸 사람(sender) 추출
+     */
+    public String getSender(String serverMessage) {
+        try {
+            int start = serverMessage.indexOf("] ") + 2;
+            int end = serverMessage.indexOf(" →");
+            if (start >= 0 && end > start) {
+                return serverMessage.substring(start, end).trim();
+            }
+        } catch (Exception e) {
+            System.out.println("귓속말 발신자 추출 오류: " + e.getMessage());
+        }
+        return "Unknown";
     }
     
-    // 메시지 내용 추출
-    public String getContent(String message) {
-        String[] parts = message.split(Protocol.SEPARATOR);
-        return parts[3];
+    /**
+     * "[귓속말] sender → receiver: content" 형태에서 본문 내용(content) 추출
+     */
+    public String getContent(String serverMessage) {
+        try {
+            int start = serverMessage.indexOf(": ");
+            if (start >= 0) {
+                return serverMessage.substring(start + 2);
+            }
+        } catch (Exception e) {
+            System.out.println("귓속말 본문 추출 오류: " + e.getMessage());
+        }
+        return serverMessage;
     }
 }
